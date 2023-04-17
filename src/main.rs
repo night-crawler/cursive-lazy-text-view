@@ -1,5 +1,3 @@
-mod ltv;
-
 use cursive::Cursive;
 use cursive::direction::Orientation;
 use cursive::traits::{Nameable, Resizable, Scrollable};
@@ -7,7 +5,9 @@ use cursive::utils::markup::StyledString;
 use cursive::view::ScrollStrategy;
 use cursive::views::{Checkbox, EditView, LinearLayout, NamedView, Panel, ResizedView};
 use crate::ltv::TextView;
+// use cursive::views::TextView;
 
+mod ltv;
 
 pub fn build_edit_view<S1, S2, F>(name: S1, initial: S2, on_edit: F) -> NamedView<EditView>
     where
