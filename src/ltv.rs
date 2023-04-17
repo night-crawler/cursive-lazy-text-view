@@ -1,6 +1,6 @@
+use std::collections::VecDeque;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::sync::{Mutex, MutexGuard};
 use std::sync::Arc;
@@ -11,7 +11,6 @@ use cursive::theme::*;
 use cursive::utils::lines::spans::{LinesIterator, Row};
 use cursive::utils::markup::StyledString;
 use cursive::view::{SizeCache, View};
-use lru::LruCache;
 use owning_ref::{ArcRef, OwningHandle};
 use unicode_width::UnicodeWidthStr;
 
@@ -199,8 +198,8 @@ impl TextContentInner {
 pub struct TextView {
     // content: String,
     content: TextContent,
-    rows: Arc<Vec<Row>>,
-    row_cache: LruCache<usize, Arc<Vec<Row>>>,
+    row_cache_index: usize,
+    row_cache: VecDeque<(usize, Vec<Row>)>,
 
     align: Align,
 
@@ -242,8 +241,8 @@ impl TextView {
         log("new");
 
         TextView {
-            row_cache: LruCache::new(NonZeroUsize::new(10).unwrap()),
-            rows: Arc::new(Vec::new()),
+            row_cache: VecDeque::from_iter([(0, vec![])]),
+            row_cache_index: Default::default(),
             content,
             style: StyleType::default(),
             wrap: true,
@@ -375,28 +374,23 @@ impl TextView {
         content.size_cache = None;
         content.content_cache = Arc::clone(&content.content_value);
 
-        if size.x == 0 {
-            // Nothing we can do at this point.
-            return;
-        }
-
-        if let Some(rows) = self.row_cache.get(&size.x) {
-            log("!! cache hit");
-            self.rows = Arc::clone(rows);
+        if let Some(p) = self.row_cache.iter().rposition(|(cached_size, _)| *cached_size == size.x) {
+            self.row_cache_index = p;
         } else {
-            log("!! cache miss");
-            self.rows = Arc::new(
-                LinesIterator::new(content.get_cache().as_ref(), size.x).collect(),
-            );
-            self.row_cache.put(size.x, Arc::clone(&self.rows));
+            let rows: Vec<Row> = LinesIterator::new(content.get_cache().as_ref(), size.x).collect();
+            self.row_cache.push_front((size.x, rows));
+            if self.row_cache.len() >= 5 {
+                self.row_cache.pop_front();
+            }
+            self.row_cache_index = self.row_cache.len() - 1;
         }
 
         // Desired width
-        self.width = if self.rows.iter().any(|row| row.is_wrapped) {
+        self.width = if self.row_cache[self.row_cache_index].1.iter().any(|row| row.is_wrapped) {
             // If any rows are wrapped, then require the full width.
             Some(size.x)
         } else {
-            self.rows.iter().map(|row| row.width).max()
+            self.row_cache[self.row_cache_index].1.iter().map(|row| row.width).max()
         }
     }
 }
@@ -404,7 +398,7 @@ impl TextView {
 impl View for TextView {
     fn draw(&self, printer: &Printer) {
         log("draw");
-        let h = self.rows.len();
+        let h = self.row_cache[self.row_cache_index].1.len();
         // If the content is smaller than the view, align it somewhere.
         let offset = self.align.v.get_offset(h, printer.size.y);
         let printer = &printer.offset((0, offset));
@@ -413,7 +407,7 @@ impl View for TextView {
 
         printer.with_style(self.style, |printer| {
             for (y, row) in self
-                .rows
+                .row_cache[self.row_cache_index].1
                 .iter()
                 .enumerate()
                 .skip(printer.content_offset.y)
@@ -438,7 +432,7 @@ impl View for TextView {
         self.compute_rows(size);
 
         // The entire "virtual" size (includes all rows)
-        let my_size = Vec2::new(self.width.unwrap_or(0), self.rows.len());
+        let my_size = Vec2::new(self.width.unwrap_or(0), self.row_cache[self.row_cache_index].1.len());
 
         // Build a fresh cache.
         let mut content = self.content.content.lock().unwrap();
@@ -455,6 +449,6 @@ impl View for TextView {
         log(format!("required_size({:?})", size));
         self.compute_rows(size);
 
-        Vec2::new(self.width.unwrap_or(0), self.rows.len())
+        Vec2::new(self.width.unwrap_or(0), self.row_cache[self.row_cache_index].1.len())
     }
 }

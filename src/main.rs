@@ -5,8 +5,8 @@ use cursive::utils::markup::StyledString;
 use cursive::view::ScrollStrategy;
 use cursive::views::{Checkbox, EditView, LinearLayout, Panel, ResizedView};
 
-// use crate::ltv::TextView;
-use cursive::views::TextView;
+use crate::ltv::TextView;
+// use cursive::views::TextView;
 
 mod ltv;
 
