@@ -378,7 +378,7 @@ impl TextView {
             self.row_cache_index = p;
         } else {
             let rows: Vec<Row> = LinesIterator::new(content.get_cache().as_ref(), size.x).collect();
-            self.row_cache.push_front((size.x, rows));
+            self.row_cache.push_back((size.x, rows));
             if self.row_cache.len() >= 5 {
                 self.row_cache.pop_front();
             }
